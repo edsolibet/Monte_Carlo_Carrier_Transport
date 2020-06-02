@@ -88,8 +88,6 @@ GaAs = Material(m_G = 0.067,
                 name='GaAs')
 
 
-    
-    
 class Layer:
     """
     Layer of semiconductor with the following properties...
