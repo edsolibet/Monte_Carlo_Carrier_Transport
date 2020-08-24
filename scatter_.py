@@ -11,6 +11,7 @@ import pandas as pd
 import itertools
 from init_ import Parameters
 from init_ import Device
+import matplotlib.pyplot as plt
 Materials = Device.Materials
 
 ''' --- Functions --- '''
@@ -229,7 +230,7 @@ def IV_GL_ems(Ek, mat_i, val, T):
                     * Materials[mat_i].EP["GL"]/Parameters.hbar_eVs)
     p_ems = (Ek > (Materials[mat_i].E_val["GL"] + Materials[mat_i].EP["GL"])) * \
                     density_of_states(abs(Ek - Materials[mat_i].EP["GL"] - Materials[mat_i].E_val["GL"]), Materials[mat_i].mass[0]) \
-                    * Bose_Einstein(Materials[mat_i].EP["GL"] + 1)
+                    * (Bose_Einstein(Materials[mat_i].EP["GL"]) + 1)
     return const*(p_ems)*5E15 #5E13
 
 
@@ -280,7 +281,7 @@ def IV_GX_ems(Ek, mat_i, val, T):
                     * Materials[mat_i].EP["GX"]/Parameters.hbar_eVs)
     p_abs =  (Ek > (Materials[mat_i].E_val["GX"] + Materials[mat_i].EP["GX"])) * \
                     density_of_states(abs(Ek - Materials[mat_i].EP["GX"] - Materials[mat_i].E_val["GX"]), Materials[mat_i].mass[0]) \
-                    * Bose_Einstein(Materials[mat_i].EP["GX"] + 1)
+                    * (Bose_Einstein(Materials[mat_i].EP["GX"]) + 1)
     return const*(p_abs)*1.75E14
 
 def IV_LG_abs(Ek, mat_i, val, T):
@@ -305,7 +306,7 @@ def IV_LG_abs(Ek, mat_i, val, T):
                     * Materials[mat_i].EP["LG"]/Parameters.hbar_eVs)
     p_abs = density_of_states(abs(Ek + Materials[mat_i].EP["LG"] + Materials[mat_i].E_val["LG"]), Materials[mat_i].mass[1]) \
                     * Bose_Einstein(Materials[mat_i].EP["LG"])
-    return const*(p_abs)*2E12
+    return const*(p_abs)*4E12
 
 def IV_LG_ems(Ek, mat_i, val, T):
     ''' Intravalley Phonon Scattering - emission from L to Gamma valley
@@ -328,8 +329,8 @@ def IV_LG_ems(Ek, mat_i, val, T):
     const = (np.pi*(Materials[mat_i].defpot["LG"])**2 * Materials[mat_i].B[0]) / (Materials[mat_i].rho 
                     * Materials[mat_i].EP["LG"]/Parameters.hbar_eVs)
     p_abs = density_of_states(abs(Ek - Materials[mat_i].EP["LG"] + Materials[mat_i].E_val["LG"]), Materials[mat_i].mass[1]) \
-                    * Bose_Einstein(Materials[mat_i].EP["LG"] + 1)
-    return const*(p_abs)*1E13
+                    * (Bose_Einstein(Materials[mat_i].EP["LG"]) + 1)
+    return const*(p_abs)*9E12
 
 def IV_LL_abs(Ek, mat_i, val, T):
     ''' Intravalley Phonon Scattering - absorption from L to L valley
@@ -353,7 +354,7 @@ def IV_LL_abs(Ek, mat_i, val, T):
                     * Materials[mat_i].EP["LL"]/Parameters.hbar_eVs)
     p_abs = density_of_states(abs(Ek + Materials[mat_i].EP["LL"]), Materials[mat_i].mass[1]) \
                     * Bose_Einstein(Materials[mat_i].EP["LL"])
-    return const*(p_abs)*1E13
+    return const*(p_abs)*9E13
 
 def IV_LL_ems(Ek, mat_i, val, T):
     ''' Intravalley Phonon Scattering - emission from L to L valley
@@ -377,8 +378,8 @@ def IV_LL_ems(Ek, mat_i, val, T):
                     * Materials[mat_i].EP["LL"]/Parameters.hbar_eVs)
     p_abs = (Ek > Materials[mat_i].EP["LL"]) * \
                     density_of_states(abs(Ek - Materials[mat_i].EP["LL"]), Materials[mat_i].mass[1]) \
-                    * Bose_Einstein(Materials[mat_i].EP["LL"] + 1)
-    return const*(p_abs)*1E13
+                    * (Bose_Einstein(Materials[mat_i].EP["LL"]) + 1)
+    return const*(p_abs)*9E13
 
 def IV_LX_abs(Ek, mat_i, val, T):
     ''' Intravalley Phonon Scattering - absorption from L to X valley
@@ -403,7 +404,7 @@ def IV_LX_abs(Ek, mat_i, val, T):
     p_abs = (Ek > (Materials[mat_i].E_val["LX"] - Materials[mat_i].EP["LX"])) * \
                     density_of_states(abs(Ek + Materials[mat_i].EP["LX"] - Materials[mat_i].E_val["LX"]), Materials[mat_i].mass[1]) \
                     * Bose_Einstein(Materials[mat_i].EP["LX"])
-    return const*(p_abs)*4E13
+    return const*(p_abs)*5E13
 
 def IV_LX_ems(Ek, mat_i, val, T):
     ''' Intravalley Phonon Scattering - emission from L to X valley
@@ -427,7 +428,7 @@ def IV_LX_ems(Ek, mat_i, val, T):
                     * Materials[mat_i].EP["LX"]/Parameters.hbar_eVs)
     p_abs = (Ek > (Materials[mat_i].E_val["LX"] + Materials[mat_i].EP["LX"])) * \
                     density_of_states(abs(Ek - Materials[mat_i].EP["LX"] - Materials[mat_i].E_val["LX"]), Materials[mat_i].mass[1]) \
-                    * Bose_Einstein(Materials[mat_i].EP["LX"] + 1)
+                    * (Bose_Einstein(Materials[mat_i].EP["LX"]) + 1)
     return const*(p_abs)*4E13
 
 def IV_XG_abs(Ek, mat_i, val, T):
@@ -452,7 +453,7 @@ def IV_XG_abs(Ek, mat_i, val, T):
                     * Materials[mat_i].EP["XG"]/Parameters.hbar_eVs)
     p_abs = density_of_states(abs(Ek + Materials[mat_i].EP["XG"] + Materials[mat_i].E_val["XG"]), Materials[mat_i].mass[2]) \
                     * Bose_Einstein(Materials[mat_i].EP["XG"])
-    return const*(p_abs)*3.5E10
+    return const*(p_abs)*5E10
 
 def IV_XG_ems(Ek, mat_i, val, T):
     ''' Intravalley Phonon Scattering - emission from X to Gamma valley
@@ -475,8 +476,8 @@ def IV_XG_ems(Ek, mat_i, val, T):
     const = (np.pi*(Materials[mat_i].defpot["XG"])**2 * Materials[mat_i].B[0]) / (Materials[mat_i].rho 
                     * Materials[mat_i].EP["XG"]/Parameters.hbar_eVs)
     p_abs = density_of_states(abs(Ek - Materials[mat_i].EP["XG"] + Materials[mat_i].E_val["XG"]), Materials[mat_i].mass[2]) \
-                    * Bose_Einstein(Materials[mat_i].EP["XG"] + 1)
-    return const*(p_abs)*2.5E10
+                    * (Bose_Einstein(Materials[mat_i].EP["XG"]) + 1)
+    return const*(p_abs)*4E10
 
 def IV_XL_abs(Ek, mat_i, val, T):
     ''' Intravalley Phonon Scattering - absorption from X to L valley
@@ -523,7 +524,7 @@ def IV_XL_ems(Ek, mat_i, val, T):
     const = (np.pi*(Materials[mat_i].defpot["XL"])**2 * Materials[mat_i].B[1]) / (Materials[mat_i].rho 
                     * Materials[mat_i].EP["XL"]/Parameters.hbar_eVs)
     p_abs = density_of_states(abs(Ek - Materials[mat_i].EP["XL"] + Materials[mat_i].E_val["XL"]), Materials[mat_i].mass[2]) \
-                    * Bose_Einstein(Materials[mat_i].EP["XL"] + 1)
+                    * (Bose_Einstein(Materials[mat_i].EP["XL"]) + 1)
     return const*(p_abs)*1.6E13
 
 def IV_XX_abs(Ek, mat_i, val, T):
@@ -575,7 +576,7 @@ def IV_XX_ems(Ek, mat_i, val, T):
     const = (np.pi*(Materials[mat_i].defpot["XX"])**2 * Materials[mat_i].B[2]) / (Materials[mat_i].rho 
                     * Materials[mat_i].EP["XX"]/Parameters.hbar_eVs)
     p_abs = density_of_states(abs(Ek - Materials[mat_i].EP["XX"]), Materials[mat_i].mass[2]) \
-                    * Bose_Einstein(Materials[mat_i].EP["XX"] + 1)
+                    * (Bose_Einstein(Materials[mat_i].EP["XX"]) + 1)
     return const*(p_abs)*4E12
 
 
@@ -1096,3 +1097,20 @@ def scatter(coords, scat_table, val, dfE, mat_i):
     #     raise ValueError('Invalid coordinates')
     val = df[val][mech]['trans']
     return coords, val
+
+def plot_scat_rate(scat, elec_energy, val, T):
+    y = np.zeros((len(scat.keys()),len(elec_energy)))
+    for e, energy in enumerate(elec_energy):
+        for s, sc in enumerate(list(scat.keys())):
+            y[s][e] = scat[sc]['mech'](energy, 0, val, T)
+    tot = y[0:-3].sum(axis = 0)
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    for i in range(len(scat.keys()) - 3):
+        ax.plot(elec_energy, y[i], label = list(scat.keys())[i])
+    #ax.plot(elec_energy, tot, label = 'Total Scattering Rate')
+    #ax.plot(elec_energy, y[-1], label = 'Self Scattering')
+    ax.legend(loc = 1)
+    ax.set_xlabel('Energy (eV)')
+    ax.set_ylabel(r'Scattering rate $\Gamma$ (s$^{-1}$)')
+    #ax2.set_yscale('log')

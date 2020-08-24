@@ -8,6 +8,7 @@ from __future__ import division
 import numpy as np
 import pandas as pd
 from scipy.stats import maxwell
+from itertools import product
 
 
 
@@ -23,12 +24,13 @@ class Layer:
     
     thickness = thickness of the layer in nm
     """
-    def __init__(self, matl, doping, lx, ly, lz):
+    def __init__(self, matl, dope, lx, ly, lz):
         self.matl = matl
-        self.doping = doping
+        self.dope = dope
         self.lx = lx
         self.ly = ly
         self.lz = lz
+        
         
 
 def where_am_i(layers, dist):
@@ -56,7 +58,7 @@ def where_am_i(layers, dist):
 class Parameters:
     ''' Simulation parameters '''
     dt = 2E-15 # time step
-    pts = 25 # number of time intervals
+    pts = 500 # number of time intervals
     
     ''' Physical Constants '''
     inf = float('inf') # infinity
@@ -105,41 +107,54 @@ class GaAs:
     
 class Device:
 
-    def inv_debye_len(mat):
+    def inv_debye_len(layer):
         ''' Calculates the inverse debye length
         
         Parameters
         ----------
-        dope : float
-            doping concentration of the material
-        mat : class
-            material class
+        layer : class
+            material layer class
 
         Returns
         -------
         float
             inverse debye length
         '''
-        return np.sqrt(Parameters.q * mat.dope * 1E2**3 / (mat.eps_0 * Parameters.kT))
+        return np.sqrt(Parameters.q * layer.dope * 1E2**3 / (layer.matl.eps_0 * Parameters.kT))
     
     ''' --- Device geometry and material composition --- '''
 
-    layer0 = Layer(matl=GaAs, doping=1E17, lx = 10E-6, ly = 10E-6, lz=3E-6)
-    #layer1 = Layer(matl=GaAs, doping=1E17, lx = 10E-6, ly = 10E-6, lz=1E-6)
+    layer0 = Layer(matl=GaAs, dope=1E16, lx = 3E-6, ly = 3E-6, lz=9E-7)
+    #layer1 = Layer(matl=GaAs, dope=1E17, lx = 3E-6, ly = 1E-6, lz=8E-7)
     layers = [layer0]
     Materials = [layer.matl for layer in layers]
     
-    num_carr = 100
+    num_carr = 5000
     elec_field = np.array([0, 0, -5000]) # Ex, Ey, Ez (V/cm)
     dim = [np.array([layer.lx, layer.ly, layer.lz]) for layer in layers]
     seg = []
     for ndx, layer in enumerate(layers):
-        seg.append((dim[ndx]*inv_debye_len(layer.matl)).astype(int))
-    
+        seg.append((dim[ndx]*inv_debye_len(layer)).astype(int))
+    seg = np.array(seg)
     dl = []    
     for ndx, layer in enumerate(layers):
         dl.append(dim[ndx]/seg[ndx])
+    dl = np.max(dl, axis = 0)
+    seg = (dim/dl).astype(int)
+    
     mean_energy = 0.1
+    # total device dimensions
+    tot_dim = np.append(np.max(dim, axis = 0)[:2], np.sum(dim, axis = 0)[2])
+    # total device seg
+    tot_seg = np.append(np.max(seg, axis = 0)[:2], np.sum(seg, axis = 0)[2])
+    tot_seg = tot_seg.astype(int)
+    # volume of each layer
+    vol = np.prod(dim, axis = 1)
+    # charge for each particle in each layer; factor since doping is in cm-3
+    charge = []
+    for i in range(len(layers)):
+        charge.append((layers[i].dope*vol[i]*(1e2)**3) / num_carr)
+    charge = np.array(charge)
 
 
 def init_energy_df(max_nrg = 2, div = 10000):
@@ -156,6 +171,24 @@ def init_elec_field():
     '''
     tot_seg = np.append(np.max(Device.seg, axis = 0)[:2], np.sum(Device.seg, axis = 0)[2])
     return np.tile(Device.elec_field, np.append(tot_seg.astype(int), 1)) 
+    
+def init_mesh():
+    '''
+    Generates the mesh grid
+
+    Returns
+    -------
+    dfmesh : database
+        coordinates of mesh grid points
+
+    '''
+    grid = [np.arange(1, Device.tot_seg[j]*2 + 1, 2)*Device.dl[j]/2 for j in range(3)]
+    dfmesh = pd.DataFrame(list(product(*grid)))
+    return dfmesh
+
+def init_rho(dfmesh, dope, dl):
+    
+    return np.ones(len(dfmesh))*dope*np.prod(dl)*(-100**3)
     
 
 def init_coords(layers = Device.layers, num_carr = Device.num_carr, mean_nrg = Device.mean_energy):
@@ -191,6 +224,52 @@ def init_coords(layers = Device.layers, num_carr = Device.num_carr, mean_nrg = D
     coords = np.zeros((num_carr,6))
     # remove for loop
     for i in range(num_carr):
+        coords[i][0] = kx[i]
+        coords[i][1] = ky[i]
+        coords[i][2] = kz[i]
+        coords[i][3] = x[i]
+        coords[i][4] = y[i]
+        coords[i][5] = z[i]
+    
+    return coords
+
+class laser:
+    laser_ex = 800
+    laser_pow = 0.1E-3
+    laser_std = 0.5E-6
+    laser_t = 100E-15
+    laser_eff = (laser_pow*laser_t/(Parameters.q*(1240/laser_ex - Device.Materials[0].EG)))/Device.num_carr
+    t0 = 1.5E-12
+    
+def init_photoex(layers, num_carr, nrg = 1240/laser.laser_ex - Device.Materials[0].EG):
+    # initialize wave vectors, x1E9 m^-1
+    #print (f"Initializing photoexcited carriers ({nrg:0.2g} eV).")
+    z = np.random.exponential(min(1/Device.Materials[0].alpha, Device.tot_dim[2]), int(num_carr))
+    z_ndx = z < Device.tot_dim[2]
+    z = z[z_ndx]
+    x = np.random.normal(0, laser.laser_std, int(num_carr))
+    x = x[z_ndx]
+    y = np.random.normal(0, laser.laser_std, int(num_carr))
+    y = y[z_ndx]
+    #y = y[y < Device.tot_dim[1]]
+    
+    e = np.ones(len(z))*nrg
+    
+    #print ("Initializing initial wave vectors (m^-1).")
+    kx = []
+    ky = []
+    kz = []
+    for ndx, i in enumerate(e):
+        mat = layers[where_am_i(layers, z[ndx])['current_layer']].matl
+        k = np.sqrt(2*mat.mass[0]*Parameters.q*i/Parameters.hbar**2) 
+        alpha = np.random.normal(0, 2*np.pi)
+        beta = np.random.normal(0, 2*np.pi)
+        kx.append(k*np.cos(alpha)*np.sin(beta))
+        ky.append(k*np.sin(alpha)*np.sin(beta))
+        kz.append(k*np.cos(beta))
+       
+    coords = np.zeros((len(z),6))
+    for i in range(len(z)):
         coords[i][0] = kx[i]
         coords[i][1] = ky[i]
         coords[i][2] = kz[i]
