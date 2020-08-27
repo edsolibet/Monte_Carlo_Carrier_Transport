@@ -67,6 +67,8 @@ relx = 1.5
 num = 1
 p = 0.5*np.cos(np.pi/dev.tot_seg[0]) + 0.5*np.cos(np.pi/dev.tot_seg[1]) + 0.5*np.cos(np.pi/dev.tot_seg[2])
 while err > tol:
+    
+    
     print (f"Iteration {num}")
     u_prev = np.copy(u_)
     for k, j, i in product(range(1, dev.tot_seg[2] + 1), range(1, dev.tot_seg[1] + 1), range(1, dev.tot_seg[0] + 1)):
@@ -102,3 +104,7 @@ def plot_particles(coords):
     ax.set_ylabel('Y Label')
     ax.set_zlabel('Z Label')
 
+def plot_imshow(u):
+    fig, ax = plt.subplots()
+    temp = ax.imshow(u[:,1,:], cmap = 'plasma')
+    fig.colorbar(temp)

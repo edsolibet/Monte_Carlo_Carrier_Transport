@@ -58,7 +58,7 @@ def where_am_i(layers, dist):
 class Parameters:
     ''' Simulation parameters '''
     dt = 2E-15 # time step
-    pts = 500 # number of time intervals
+    pts = 50 # number of time intervals
     
     ''' Physical Constants '''
     inf = float('inf') # infinity
@@ -124,12 +124,12 @@ class Device:
     
     ''' --- Device geometry and material composition --- '''
 
-    layer0 = Layer(matl=GaAs, dope=1E16, lx = 3E-6, ly = 3E-6, lz=9E-7)
+    layer0 = Layer(matl=GaAs, dope=1E16, lx = 3E-6, ly = 4.326178398780776e-08, lz=900E-9)
     #layer1 = Layer(matl=GaAs, dope=1E17, lx = 3E-6, ly = 1E-6, lz=8E-7)
     layers = [layer0]
     Materials = [layer.matl for layer in layers]
     
-    num_carr = 5000
+    num_carr = 10000
     elec_field = np.array([0, 0, -5000]) # Ex, Ey, Ez (V/cm)
     dim = [np.array([layer.lx, layer.ly, layer.lz]) for layer in layers]
     seg = []

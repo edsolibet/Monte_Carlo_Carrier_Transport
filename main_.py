@@ -56,27 +56,36 @@ grid = init_.init_mesh()
 rho = init_.init_rho(grid, dev.Materials[0].dope, dev.dl)
 EF_init = init_.init_elec_field()
 elec_field = np.copy(EF_init)
-scat_tables = [scatter_.calc_scatter_table(dfEk, ndx) for ndx in range(len(dev.layers))] # Need scatter tables for each material
+
+''' --- Conditions --- '''
+scat_cond = False
+save_cond = False
+drift_cond = False
+
+if scat_cond:
+    scat_tables = [scatter_.calc_scatter_table(dfEk, ndx) for ndx in range(len(dev.layers))] # Need scatter tables for each material
 if len(init_coords) == len(valley) and len(init_coords) >0:
     logging.debug('Initial coordinates and valley assignments generated.')
 
-# Generate Excel file
-dirPath = 'C:/Users/Master/Documents/Python Scripts/THz emission mechanisms in InGaAs/'
-folderName = 'Monte Carlo Simulation Results'
-os.chdir(dirPath + folderName)
-keyword = "Steady-state Transport Kernel"
 
-num = 1
-while True:
-    filename = datetime.datetime.today().strftime("%Y-%m-%d") + ' ' + keyword + \
-    ' (' + str(num) + ').xlsx'
-    if not os.path.exists(filename):
-        break
-    num += 1
-wb = openpyxl.Workbook()
-wb.save(os.getcwd() + '\\' + filename)
-wb = openpyxl.load_workbook(os.getcwd() + '\\' + filename)
-sheet = wb[wb.sheetnames[0]]
+# Generate Excel file
+if save_cond:
+    dirPath = 'C:/Users/Master/Documents/Python Scripts/THz emission mechanisms in InGaAs/'
+    folderName = 'Monte Carlo Simulation Results'
+    os.chdir(dirPath + folderName)
+    keyword = "Steady-state Transport Kernel"
+    
+    num = 1
+    while True:
+        filename = datetime.datetime.today().strftime("%Y-%m-%d") + ' ' + keyword + \
+        ' (' + str(num) + ').xlsx'
+        if not os.path.exists(filename):
+            break
+        num += 1
+    wb = openpyxl.Workbook()
+    wb.save(os.getcwd() + '\\' + filename)
+    wb = openpyxl.load_workbook(os.getcwd() + '\\' + filename)
+    sheet = wb[wb.sheetnames[0]]
 
 ''' --- Functions --- '''
 
@@ -203,6 +212,13 @@ def carrier_drift(coord, elec_field, dt2, mass):
         raise Exception('Invalid wavevector coordinates')
     return coord
 
+def get_pos(x, grid):
+    
+    # grid.iloc[spatial.KDTree(grid).query(coords[0][3:])[1],:]
+    sub = np.product(abs(grid - x) <= dev.dl[0]/2, axis = 1)
+    
+    return sub[sub == True].index
+
 def poisson(elec_field, coords, dfmesh, rho):
     '''
     Calculates the electric field at each time t
@@ -219,11 +235,10 @@ def poisson(elec_field, coords, dfmesh, rho):
 
     Returns
     -------
-    elec_field : TYPE
+    elec_field : array
         electric field solution of poisson equation
 
     '''
-    
     def get_near(x):
         '''
         Finds the nearest mesh grid point for each particle location and assigns the charge
@@ -244,6 +259,7 @@ def poisson(elec_field, coords, dfmesh, rho):
             rho[list(sub[sub==1].index)] += dev.Materials[0].dope*dev.vol*(100**3)/dev.num_carr
         except:
             pass
+    
         
     def get_adj(mat, i, j, k, dim):
         '''
@@ -306,134 +322,135 @@ def poisson(elec_field, coords, dfmesh, rho):
     
     
 ''' --- Main Monte Carlo Transport Sequence --- '''
-# Generate quantity list placeholders num_carr (rows) x pts (columns)
-t_range = [i * param.dt for i in range(param.pts)]
-v_hist = np.zeros((dev.num_carr, param.pts))
-x_hist = np.zeros((dev.num_carr, param.pts))
-y_hist = np.zeros((dev.num_carr, param.pts))
-z_hist = np.zeros((dev.num_carr, param.pts))
-e_hist = np.zeros((dev.num_carr, param.pts))
-val_hist = np.zeros((dev.num_carr, param.pts))
-# Change in carrier count
-dcarr_0 = 0
-# Generate initial free flight durations for all particles
-dtau = [free_flight(1E15) for i in range(dev.num_carr)]
+if drift_cond:
+    # Generate quantity list placeholders num_carr (rows) x pts (columns)
+    t_range = [i * param.dt for i in range(param.pts)]
+    v_hist = np.zeros((dev.num_carr, param.pts))
+    x_hist = np.zeros((dev.num_carr, param.pts))
+    y_hist = np.zeros((dev.num_carr, param.pts))
+    z_hist = np.zeros((dev.num_carr, param.pts))
+    e_hist = np.zeros((dev.num_carr, param.pts))
+    val_hist = np.zeros((dev.num_carr, param.pts))
+    # Change in carrier count
+    dcarr_0 = 0
+    # Generate initial free flight durations for all particles
+    dtau = [free_flight(dev.Materials[0].tot_scat) for i in range(dev.num_carr)]
 
-for c, t in enumerate(t_range):
-    logging.debug('Time: %0.4g' %t)
-    sheet['A' + str(c + 2)] = t*1E12
-    #elec_field = EF_init + poisson(elec_field, coords, grid, rho)
-    # Carrier photoexcitation 
-    # Find number of carriers to be added from photoexcitation at t = t0
-    dcarr = int(dev.num_carr*(1+las.laser_eff*stats.norm.cdf(t, las.t0 + 3*las.laser_t, las.laser_t))-dev.num_carr)
-    # Add corresponding number of carriers, does nothing if dcarr = 0
-    coords = np.append(coords, init_.init_photoex(dev.layers, int(dcarr), (1240/las.laser_ex - dev.Materials[0].EG)), axis = 0)
-    # Add corresponding amount of valley states for added carriers
-    valley = np.append(valley, np.zeros(dcarr), axis = 0)
-    # Add free_flight durations for new photoexcited carriers
-    dtau = np.append(dtau, [free_flight(1E15) for i in range(int(dcarr))], axis = 0)
-    # Update length quantity arrays
-    v_hist = np.append(v_hist, np.zeros((int(dcarr), v_hist.shape[1])), axis = 0)
-    z_hist = np.append(z_hist, np.zeros((int(dcarr), z_hist.shape[1])), axis = 0)
-    e_hist = np.append(e_hist, np.zeros((int(dcarr), e_hist.shape[1])), axis = 0)
-    val_hist = np.append(val_hist, np.zeros((int(dcarr), val_hist.shape[1])), axis = 0)
-    # Update number of carriers
-    dev.num_carr += int(dcarr)
-    # Start transport sequence, iterate over each particle
-    for carr in range(dev.num_carr):
-        dte = dtau[carr]
-        # time of flight longer than time interval dt
-        if dte >= param.dt:
-            dt2 = param.dt
-            # get elec field at coordinate
-            mat_i = where_am_i(dev.layers, coords[carr][5])['current_layer']
-            drift_coords = carrier_drift(coords[carr], dev.elec_field, dt2, mat[mat_i].mass[int(valley[carr])])
-        # time of flight shorter than time interval dt
-        else:
-            dt2 = dte
-            # get elec field at coordinate
-            mat_i = where_am_i(dev.layers, coords[carr][5])['current_layer']
-            drift_coords = carrier_drift(coords[carr], dev.elec_field, dt2, mat[mat_i].mass[valley[carr]])
-            # iterate free flight until approaching dt
-            while dte < param.dt:
-                dte2 = dte
-                mat_i = where_am_i(dev.layers, drift_coords[5])['current_layer']
-                drift_coords, valley[carr] = scatter_.scatter(drift_coords, scat_tables[mat_i][int(valley[carr])], int(valley[carr]), dfEk, mat_i)
-                dt3 = free_flight(mat[0].tot_scat)
-                # Calculate remaining time dtp before end of interval dt
-                dtp = param.dt - dte2
-                if dt3 <= dtp: # free flight after scattering is less than dtp
-                    dt2 = dt3
-                else: # free flight after scattering is longer than dtp
-                    dt2 = dtp
+    for c, t in enumerate(t_range):
+        logging.debug('Time: %0.4g' %t)
+        sheet['A' + str(c + 2)] = t*1E12
+        #elec_field = EF_init + poisson(elec_field, coords, grid, rho)
+        # Carrier photoexcitation 
+        # Find number of carriers to be added from photoexcitation at t = t0
+        dcarr = int(dev.num_carr*(1+las.laser_eff*stats.norm.cdf(t, las.t0 + 3*las.laser_t, las.laser_t))-dev.num_carr)
+        # Add corresponding number of carriers, does nothing if dcarr = 0
+        coords = np.append(coords, init_.init_photoex(dev.layers, int(dcarr), (1240/las.laser_ex - dev.Materials[0].EG)), axis = 0)
+        # Add corresponding amount of valley states for added carriers
+        valley = np.append(valley, np.zeros(dcarr), axis = 0)
+        # Add free_flight durations for new photoexcited carriers
+        dtau = np.append(dtau, [free_flight(1E15) for i in range(int(dcarr))], axis = 0)
+        # Update length quantity arrays
+        v_hist = np.append(v_hist, np.zeros((int(dcarr), v_hist.shape[1])), axis = 0)
+        z_hist = np.append(z_hist, np.zeros((int(dcarr), z_hist.shape[1])), axis = 0)
+        e_hist = np.append(e_hist, np.zeros((int(dcarr), e_hist.shape[1])), axis = 0)
+        val_hist = np.append(val_hist, np.zeros((int(dcarr), val_hist.shape[1])), axis = 0)
+        # Update number of carriers
+        dev.num_carr += int(dcarr)
+        # Start transport sequence, iterate over each particle
+        for carr in range(dev.num_carr):
+            dte = dtau[carr]
+            # time of flight longer than time interval dt
+            if dte >= param.dt:
+                dt2 = param.dt
                 # get elec field at coordinate
-                mat_i = where_am_i(dev.layers, drift_coords[5])['current_layer']
-                drift_coords = carrier_drift(drift_coords, dev.elec_field, dt2, mat[mat_i].mass[valley[carr]])
-                dte = dte2 + dt3
-        dte -= param.dt
-        dtau[carr] = dte
-        coords[carr] = drift_coords
-        mat_i = where_am_i(dev.layers, drift_coords[5])['current_layer']
-        e_hist[carr][c] = calc_energy(drift_coords[0:3], valley[carr], mat[mat_i])[0]
-        v_hist[carr][c] = drift_coords[2]*param.hbar/mat[mat_i].mass[valley[carr]]
-        z_hist[carr][c] = drift_coords[5]
-        val_hist[carr][c] = valley[carr]
-    sheet['B' + str(c+2)] = np.mean(z_hist[:,c])*1E9
-    sheet['C' + str(c+2)] = np.mean(v_hist[:,c])
-    sheet['D' + str(c+2)] = np.mean(e_hist[:,c])
-    sheet['E' + str(c+2)] = val_hist[:,c].tolist().count(0)
-    sheet['F' + str(c+2)] = val_hist[:,c].tolist().count(1)
-    sheet['G' + str(c+2)] = val_hist[:,c].tolist().count(2)
+                mat_i = where_am_i(dev.layers, coords[carr][5])['current_layer']
+                drift_coords = carrier_drift(coords[carr], dev.elec_field, dt2, mat[mat_i].mass[int(valley[carr])])
+            # time of flight shorter than time interval dt
+            else:
+                dt2 = dte
+                # get elec field at coordinate
+                mat_i = where_am_i(dev.layers, coords[carr][5])['current_layer']
+                drift_coords = carrier_drift(coords[carr], dev.elec_field, dt2, mat[mat_i].mass[valley[carr]])
+                # iterate free flight until approaching dt
+                while dte < param.dt:
+                    dte2 = dte
+                    mat_i = where_am_i(dev.layers, drift_coords[5])['current_layer']
+                    drift_coords, valley[carr] = scatter_.scatter(drift_coords, scat_tables[mat_i][int(valley[carr])], int(valley[carr]), dfEk, mat_i)
+                    dt3 = free_flight(mat[0].tot_scat)
+                    # Calculate remaining time dtp before end of interval dt
+                    dtp = param.dt - dte2
+                    if dt3 <= dtp: # free flight after scattering is less than dtp
+                        dt2 = dt3
+                    else: # free flight after scattering is longer than dtp
+                        dt2 = dtp
+                    # get elec field at coordinate
+                    mat_i = where_am_i(dev.layers, drift_coords[5])['current_layer']
+                    drift_coords = carrier_drift(drift_coords, dev.elec_field, dt2, mat[mat_i].mass[valley[carr]])
+                    dte = dte2 + dt3
+            dte -= param.dt
+            dtau[carr] = dte
+            coords[carr] = drift_coords
+            mat_i = where_am_i(dev.layers, drift_coords[5])['current_layer']
+            e_hist[carr][c] = calc_energy(drift_coords[0:3], valley[carr], mat[mat_i])[0]
+            v_hist[carr][c] = drift_coords[2]*param.hbar/mat[mat_i].mass[valley[carr]]
+            z_hist[carr][c] = drift_coords[5]
+            val_hist[carr][c] = valley[carr]
+        sheet['B' + str(c+2)] = np.mean(z_hist[:,c])*1E9
+        sheet['C' + str(c+2)] = np.mean(v_hist[:,c])
+        sheet['D' + str(c+2)] = np.mean(e_hist[:,c])
+        sheet['E' + str(c+2)] = val_hist[:,c].tolist().count(0)
+        sheet['F' + str(c+2)] = val_hist[:,c].tolist().count(1)
+        sheet['G' + str(c+2)] = val_hist[:,c].tolist().count(2)
         
-''' --- Plots --- '''
-fig1, ax1 = plt.subplots()
-ax1.plot(np.array(t_range)*1E12, v_hist.mean(axis=0))
-ax1.set_xlabel('Time (ps)')
-ax1.set_ylabel('Mean Velocity (m/s)')
-ax1.set_xlim([0, t_range[-1]*1E12])
+    ''' --- Plots --- '''
+    fig1, ax1 = plt.subplots()
+    ax1.plot(np.array(t_range)*1E12, v_hist.mean(axis=0))
+    ax1.set_xlabel('Time (ps)')
+    ax1.set_ylabel('Mean Velocity (m/s)')
+    ax1.set_xlim([0, t_range[-1]*1E12])
+    
+    fig2, ax2 = plt.subplots()
+    ax2.plot(np.array(t_range)*1E12, e_hist.mean(axis = 0))
+    ax2.set_xlabel('Time (ps)')
+    ax2.set_ylabel('Mean Energy (eV)')
+    ax2.set_xlim([0, t_range[-1]*1E12])
 
-fig2, ax2 = plt.subplots()
-ax2.plot(np.array(t_range)*1E12, e_hist.mean(axis = 0))
-ax2.set_xlabel('Time (ps)')
-ax2.set_ylabel('Mean Energy (eV)')
-ax2.set_xlim([0, t_range[-1]*1E12])
+    #val_hist_ = [val_hist[:, i].tolist().count(j) for i, j in product(range(param.pts), range(3))]
+    
+    G_val = np.zeros(param.pts)
+    L_val = np.zeros(param.pts)
+    X_val = np.zeros(param.pts)
+    for i in range(param.pts):
+        G_val[i] = val_hist[:,i].tolist().count(0)
+        L_val[i] = val_hist[:,i].tolist().count(1)
+        X_val[i] = val_hist[:,i].tolist().count(2)
+    
+    fig3, ax3 = plt.subplots()
+    ax3.plot(np.array(t_range)*1E12, G_val, label = r"$\Gamma$ pop.")
+    ax3.plot(np.array(t_range)*1E12, L_val, label = r"L pop.")
+    ax3.plot(np.array(t_range)*1E12, X_val, label = r"X pop.")
+    ax3.set_xlabel('Time (ps)')
+    ax3.set_ylabel('Valley population')
+    ax3.set_xlim([0, t_range[-1]*1E12])
 
-#val_hist_ = [val_hist[:, i].tolist().count(j) for i, j in product(range(param.pts), range(3))]
-
-G_val = np.zeros(param.pts)
-L_val = np.zeros(param.pts)
-X_val = np.zeros(param.pts)
-for i in range(param.pts):
-    G_val[i] = val_hist[:,i].tolist().count(0)
-    L_val[i] = val_hist[:,i].tolist().count(1)
-    X_val[i] = val_hist[:,i].tolist().count(2)
-
-fig3, ax3 = plt.subplots()
-ax3.plot(np.array(t_range)*1E12, G_val, label = r"$\Gamma$ pop.")
-ax3.plot(np.array(t_range)*1E12, L_val, label = r"L pop.")
-ax3.plot(np.array(t_range)*1E12, X_val, label = r"X pop.")
-ax3.set_xlabel('Time (ps)')
-ax3.set_ylabel('Valley population')
-ax3.set_xlim([0, t_range[-1]*1E12])
-
-''' --- Excel Workbook Inputs --- '''
-
-xl_input = {'Number of Carriers' : dev.num_carr,
-            'Electric field (V/cm)': dev.elec_field[2],
-            'Impurity Doping (cm-3)': dev.layers[0].matl.dope,
-            'Time step (ps)': param.dt,
-            'Data Points': param.pts,
-            'Simulation Time (ps)': param.dt*param.pts
-            }
-
-# Series Heading titles
-sheet['A1'] = 'Time (ps)'
-sheet['B1'] = 'Average z pos. (nm)'
-sheet['C1'] = 'Average velocity (m/s)'
-sheet['D1'] = 'Average energy (eV)'
-sheet['E1'] = 'Gamma-Valley Population'
-sheet['F1'] = 'L-Valley Population'
-sheet['G1'] = 'X-Valley Population'
+    ''' --- Excel Workbook Inputs --- '''
+    
+    xl_input = {'Number of Carriers' : dev.num_carr,
+                'Electric field (V/cm)': dev.elec_field[2],
+                'Impurity Doping (cm-3)': dev.layers[0].matl.dope,
+                'Time step (ps)': param.dt,
+                'Data Points': param.pts,
+                'Simulation Time (ps)': param.dt*param.pts
+                }
+    
+    # Series Heading titles
+    sheet['A1'] = 'Time (ps)'
+    sheet['B1'] = 'Average z pos. (nm)'
+    sheet['C1'] = 'Average velocity (m/s)'
+    sheet['D1'] = 'Average energy (eV)'
+    sheet['E1'] = 'Gamma-Valley Population'
+    sheet['F1'] = 'L-Valley Population'
+    sheet['G1'] = 'X-Valley Population'
 
 ''' --- End Simulation --- '''
 endTime = datetime.datetime.now()
@@ -444,15 +461,16 @@ print("---%s minutes, %s seconds ---" % (mins, np.round(secs, 3)))
 print ("Time finished: ", endTime.strftime("%d-%m-%Y %H:%M:%S"))
 
 # Simulation parameter inputs
-for i, key in enumerate(list(xl_input.keys())):
-    sheet['I' + str(i+2)] = key
-    sheet['J' + str(i+2)] = xl_input[key]
-sheet['I' + str(len(xl_input.keys()) + 1)] = 'Actual Simulation Time'
-sheet['J' + str(len(xl_input.keys()) + 1)] = f'{mins} mins, {secs:.2f} s'
-
-# Set column width and freeze first row
-sheet.column_dimensions['I'].width = 21
-sheet.freeze_panes = 'A2'
-
-wb.save(os.getcwd() + '\\' + filename)
+if save_cond:
+    for i, key in enumerate(list(xl_input.keys())):
+        sheet['I' + str(i+2)] = key
+        sheet['J' + str(i+2)] = xl_input[key]
+    sheet['I' + str(len(xl_input.keys()) + 1)] = 'Actual Simulation Time'
+    sheet['J' + str(len(xl_input.keys()) + 1)] = f'{mins} mins, {secs:.2f} s'
+    
+    # Set column width and freeze first row
+    sheet.column_dimensions['I'].width = 21
+    sheet.freeze_panes = 'A2'
+    
+    wb.save(os.getcwd() + '\\' + filename)
 
